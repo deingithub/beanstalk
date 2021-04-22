@@ -387,7 +387,7 @@ async def check_for_parcel_updates():
         if not data:
             bot.log.error(f"couldn't refresh parcel data for {parcel['id']}")
         if data and str(data) != parcel["last_status"]:
-            bot.log.info(f"notifying {parcel['user_id']} for {parcel['id']}")
+            bot.log.info(f"notifying {bot.get_user(parcel['user_id'])} for {parcel['id']}")
             await bot.get_user(parcel["user_id"]).send(
                 embed=discord.Embed(title="Update!").add_field(**render_parcel(parcel, data))
             )
