@@ -1,0 +1,6 @@
+public.db
+private.db
+__pycache__
+file/*
+config.json
+*.sqlite3
