@@ -399,7 +399,7 @@ async def on_ready():
     "on start bring up the http session and start tasks"
     if not bot.setup_done:
         bot.log.info(f"Hi there from {bot.user}")
-        bot.http = aiohttp.ClientSession()
+        bot.actual_http = aiohttp.ClientSession()
         check_for_parcel_updates.start()
         bot.setup_done = True
 

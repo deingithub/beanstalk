@@ -11,7 +11,7 @@ from .helpers import Bot, iso_8601_readable
 async def fetch_hermes_paket(bot: Bot, number: str) -> dict:
     "extract hermes parcel info"
 
-    async with bot.http.get(
+    async with bot.actual_http.get(
         f"https://www.myhermes.de/services/tracking/shipments?search={number}"
     ) as req:
         try:
@@ -30,7 +30,7 @@ async def fetch_hermes_paket(bot: Bot, number: str) -> dict:
 async def fetch_asendia_paket(bot: Bot, number: str) -> dict:
     "extract asendia parcel info"
     try:
-        async with bot.http.get(
+        async with bot.actual_http.get(
             f"https://a1api2.asendia.io/api/A1/TrackingBranded/Tracking?trackingKey=AE654169-0B14-45F9-8498-A8E464E13D26&trackingNumber={number}",
             headers={
                 "Authorization": "Basic Q3VzdEJyYW5kLlRyYWNraW5nQGFzZW5kaWEuY29tOjJ3cmZzelk4cXBBQW5UVkI=",
@@ -40,9 +40,7 @@ async def fetch_asendia_paket(bot: Bot, number: str) -> dict:
             data = await req.json()
             return {
                 "status": data["trackingBrandedDetail"][0]["eventDescription"],
-                "update_time": iso_8601_readable(
-                    data["trackingBrandedDetail"][0]["eventOn"]
-                ),
+                "update_time": iso_8601_readable(data["trackingBrandedDetail"][0]["eventOn"]),
                 "url": f"https://a1.asendiausa.com/tracking/?trackingnumber={number}",
             }
 
@@ -62,19 +60,13 @@ async def fetch_dhl_paket(bot: Bot, number: str) -> dict:
             stderr=subprocess.DEVNULL,
         )
         output = str((await process.communicate())[0])
-        pain = re.search(r"""initialState: JSON.parse\("(.+)"\)""", output)[1].replace(
-            '\\\\"', '"'
-        )
+        pain = re.search(r"""initialState: JSON.parse\("(.+)"\)""", output)[1].replace('\\\\"', '"')
         pain = re.sub(r"\\\\u([0-9A-F]+)", lambda match: chr(int(match[1], 16)), pain)
         data = json.loads(pain)
         return {
-            "status": data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"][
-                "kurzStatus"
-            ],
+            "status": data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"]["kurzStatus"],
             "update_time": iso_8601_readable(
-                data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"][
-                    "datumAktuellerStatus"
-                ]
+                data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"]["datumAktuellerStatus"]
             ),
             "url": f"https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={number}",
         }

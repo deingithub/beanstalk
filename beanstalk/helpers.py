@@ -18,7 +18,7 @@ class Bot(commands.Bot):
     def __init__(self, config, db, **kwargs):
         self.cfg = config
         self.db = db  # pylint:disable=invalid-name
-        self.http = None
+        self.actual_http = None
         self.setup_done = False
         self.log = logging.getLogger("beanstalk")
 
