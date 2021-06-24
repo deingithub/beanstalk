@@ -8,9 +8,9 @@ import random
 import re
 import sqlite3
 import subprocess
-import os
+
 from copy import copy
-import tempfile
+
 from typing import Optional
 import shlex
 
@@ -64,9 +64,7 @@ pubdb = sqlite3.connect("./public.sqlite3")
 pubdb.row_factory = sqlite3.Row
 
 
-logging.basicConfig(
-    style="{", format="{levelname} {name}: {message}", level=logging.INFO
-)
+logging.basicConfig(style="{", format="{levelname} {name}: {message}", level=logging.INFO)
 logging.getLogger("discord.gateway").addFilter(lambda row: row.levelno > logging.INFO)
 
 
@@ -117,7 +115,7 @@ async def _help(ctx: commands.Context):
     "print this"
 
     def syntax(command):
-        out = "css!"
+        out = "c!"
         if not command.aliases:
             out += command.qualified_name
         else:
@@ -157,9 +155,7 @@ async def playing(ctx: commands.Context):
         await ctx.send("i dont use lastfm btw")
         return
 
-    embed = discord.Embed(
-        color=discord.Colour.dark_magenta(), title="Cass is listening to"
-    )
+    embed = discord.Embed(color=discord.Colour.dark_magenta(), title="Cass is listening to")
     players = [name for name in mpris_names() if mpris_is_playing(name)]
     if not players:
         embed.title += "… Nothing, apparently."
@@ -178,9 +174,7 @@ async def playing(ctx: commands.Context):
         if data.get("title") and data.get("artist"):
             maybe_lyrics = data["artist"] + " " + data["title"] + " lyrics"
             maybe_lyrics = re.sub(r"[^a-z]+", "-", maybe_lyrics.lower())
-            embed.description += (
-                f"\n[Best Guess For Lyrics](https://genius.com/{maybe_lyrics})"
-            )
+            embed.description += f"\n[Best Guess For Lyrics](https://genius.com/{maybe_lyrics})"
         if data.get("artUrl"):
             path = pathlib.Path(data["artUrl"].removeprefix("file://"))
             cdn_channel = bot.get_channel(cfg["cdn"])
@@ -220,7 +214,7 @@ async def screenshot(ctx: commands.Context):
         await confirm_upload(ctx, filename, "screenshot.png")
 
 
-@bot.command(aliases=["wc", "gif", "wcgif"])
+@bot.command(aliases=["wc", "gif"])
 @check_enabled("wc")
 async def webcam(ctx: commands.Context, frames: int = 90):
     "Make a short gif using my webcam and post it"
@@ -413,9 +407,7 @@ async def _play(ctx: commands.Context, url: Optional[str], offset: Optional[int]
 async def paket(ctx: commands.Context):
     "Alle Pakete anschauen"
 
-    parcels = db.execute(
-        "SELECT * FROM parcels WHERE user_id = ?", (ctx.author.id,)
-    ).fetchall()
+    parcels = db.execute("SELECT * FROM parcels WHERE user_id = ?", (ctx.author.id,)).fetchall()
     embed = discord.Embed(
         title=f"{ctx.author.display_name}'s parcels",
         description="Add parcels to track using\n"
@@ -484,13 +476,9 @@ async def check_for_parcel_updates():
         if not data:
             bot.log.error(f"couldn't refresh parcel data for {parcel['id']}")
         if data and str(data) != parcel["last_status"]:
-            bot.log.info(
-                f"notifying {bot.get_user(parcel['user_id'])} for {parcel['id']}"
-            )
+            bot.log.info(f"notifying {bot.get_user(parcel['user_id'])} for {parcel['id']}")
             await bot.get_user(parcel["user_id"]).send(
-                embed=discord.Embed(title="Update!").add_field(
-                    **render_parcel(parcel, data)
-                )
+                embed=discord.Embed(title="Update!").add_field(**render_parcel(parcel, data))
             )
     bot.log.info("done checking")
 
