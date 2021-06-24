@@ -100,3 +100,17 @@ async def play(filename: str):
             stdout=subprocess.DEVNULL,
         )
     ).wait()
+
+
+async def safe_play(filename: str, offset_secs: int = 0):
+    "resume when `filename` has been played using ffplay also hopefully nothing too loud also add offset parameter"
+
+    return await (
+        await asyncio.create_subprocess_exec(
+            "mpv",
+            "--force-window",
+            filename,
+            f"--start={offset_secs}",
+            # stdout=subprocess.DEVNULL,
+        )
+    ).wait()

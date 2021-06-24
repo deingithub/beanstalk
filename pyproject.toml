@@ -7,7 +7,7 @@ license = "AGPL-3.0"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-"discord.py" = "~1.6"
+"discord.py" = "~1.7"
 gTTS = "^2.2.2"
 urllib3 = "^1.26.4"
 aiohttp = "^3.7.4"

@@ -40,7 +40,9 @@ async def fetch_asendia_paket(bot: Bot, number: str) -> dict:
             data = await req.json()
             return {
                 "status": data["trackingBrandedDetail"][0]["eventDescription"],
-                "update_time": iso_8601_readable(data["trackingBrandedDetail"][0]["eventOn"]),
+                "update_time": iso_8601_readable(
+                    data["trackingBrandedDetail"][0]["eventOn"]
+                ),
                 "url": f"https://a1.asendiausa.com/tracking/?trackingnumber={number}",
             }
 
@@ -60,13 +62,18 @@ async def fetch_dhl_paket(bot: Bot, number: str) -> dict:
             stderr=subprocess.DEVNULL,
         )
         output = str((await process.communicate())[0])
-        pain = re.search(r"""initialState: JSON.parse\("(.+)"\)""", output)[1].replace('\\\\"', '"')
+        pain = re.search(r"""initialState: JSON.parse\("(.+)"\)""", output)[1].replace(
+            '\\\\"', '"'
+        )
         pain = re.sub(r"\\\\u([0-9A-F]+)", lambda match: chr(int(match[1], 16)), pain)
         data = json.loads(pain)
+        actual_status = [obj for obj in data["sendungen"] if obj["hasCompleteDetails"]][
+            0
+        ]["sendungsdetails"]["sendungsverlauf"]
         return {
-            "status": data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"]["kurzStatus"],
+            "status": actual_status.get("kurzStatus", "Status Unbekannt"),
             "update_time": iso_8601_readable(
-                data["sendungen"][0]["sendungsdetails"]["sendungsverlauf"]["datumAktuellerStatus"]
+                actual_status.get("datumAktuellerStatus", "Zeit Unbekannt")
             ),
             "url": f"https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={number}",
         }

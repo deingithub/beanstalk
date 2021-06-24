@@ -8,14 +8,18 @@ import random
 import re
 import sqlite3
 import subprocess
+import os
 from copy import copy
+import tempfile
+from typing import Optional
+import shlex
 
 import aiohttp
 import discord
 import gtts
 from discord.ext import commands, tasks
 
-from .helpers import Bot, check_enabled, confirm_upload, play, tempfilename
+from .helpers import Bot, check_enabled, confirm_upload, play, tempfilename, safe_play
 from .mpris import mpris_data, mpris_is_playing, mpris_names
 from .parcel import fetch_paket, render_parcel
 
@@ -23,7 +27,14 @@ cfg = {}
 with open("config.json") as f:
     cfg = json.loads(f.read())
 
-cfg["enabled"] = {"ss": True, "np": True, "proc": False, "wc": True, "tts": True}
+cfg["enabled"] = {
+    "ss": True,
+    "np": True,
+    "proc": False,
+    "wc": True,
+    "tts": True,
+    "play": True,
+}
 
 
 db = sqlite3.connect("./private.sqlite3")
@@ -53,7 +64,9 @@ pubdb = sqlite3.connect("./public.sqlite3")
 pubdb.row_factory = sqlite3.Row
 
 
-logging.basicConfig(style="{", format="{levelname} {name}: {message}", level=logging.INFO)
+logging.basicConfig(
+    style="{", format="{levelname} {name}: {message}", level=logging.INFO
+)
 logging.getLogger("discord.gateway").addFilter(lambda row: row.levelno > logging.INFO)
 
 
@@ -144,7 +157,9 @@ async def playing(ctx: commands.Context):
         await ctx.send("i dont use lastfm btw")
         return
 
-    embed = discord.Embed(color=discord.Colour.dark_magenta(), title="Cass is listening to")
+    embed = discord.Embed(
+        color=discord.Colour.dark_magenta(), title="Cass is listening to"
+    )
     players = [name for name in mpris_names() if mpris_is_playing(name)]
     if not players:
         embed.title += "… Nothing, apparently."
@@ -163,7 +178,9 @@ async def playing(ctx: commands.Context):
         if data.get("title") and data.get("artist"):
             maybe_lyrics = data["artist"] + " " + data["title"] + " lyrics"
             maybe_lyrics = re.sub(r"[^a-z]+", "-", maybe_lyrics.lower())
-            embed.description += f"\n[Best Guess For Lyrics](https://genius.com/{maybe_lyrics})"
+            embed.description += (
+                f"\n[Best Guess For Lyrics](https://genius.com/{maybe_lyrics})"
+            )
         if data.get("artUrl"):
             path = pathlib.Path(data["artUrl"].removeprefix("file://"))
             cdn_channel = bot.get_channel(cfg["cdn"])
@@ -203,7 +220,7 @@ async def screenshot(ctx: commands.Context):
         await confirm_upload(ctx, filename, "screenshot.png")
 
 
-@bot.command(aliases=["wc"])
+@bot.command(aliases=["wc", "gif", "wcgif"])
 @check_enabled("wc")
 async def webcam(ctx: commands.Context, frames: int = 90):
     "Make a short gif using my webcam and post it"
@@ -213,6 +230,9 @@ async def webcam(ctx: commands.Context, frames: int = 90):
         return
 
     with tempfilename(".gif") as filename:
+        await asyncio.create_subprocess_exec(
+            "notify-send", f"wc: {ctx.author}", f"{ctx.channel} on {ctx.guild}"
+        )
         await play("on.mp3")
         await asyncio.gather(
             ctx.message.add_reaction("🎥"),
@@ -314,11 +334,88 @@ async def sql(ctx: commands.Context, *, text: str):
         await ctx.send(f"```\n{exc.__class__.__name__}: {exc}```")
 
 
+@bot.command(name="play")
+@check_enabled("play")
+async def _play(ctx: commands.Context, url: Optional[str], offset: Optional[int] = 0):
+    "Play a youtube-dl compatible url or attachment. Optional offset in seconds after URL."
+
+    if attachments := ctx.message.attachments:
+        if attachments[0].size > 8 * 1024 * 1024:
+            await ctx.reply(":x: file too large (max 8 MB)")
+            return
+
+        if not (
+            attachments[0].content_type.startswith("video/")
+            or attachments[0].content_type.startswith("audio/")
+        ):
+            await ctx.reply(":x: doesn't look like an audio file")
+            return
+
+        with tempfilename(attachments[0].filename) as filename:
+            await asyncio.gather(
+                ctx.message.add_reaction("⏳"),
+                attachments[0].save(filename),
+            )
+            await asyncio.gather(
+                ctx.message.remove_reaction("⏳", bot.user),
+                ctx.message.add_reaction("▶️"),
+                asyncio.create_subprocess_exec(
+                    "notify-send",
+                    f"play: {ctx.author}",
+                    f"{ctx.channel} on {ctx.guild}",
+                ),
+                safe_play(filename, offset),
+            )
+
+    if url:
+        with tempfilename(".mp3") as filename:
+            data = await asyncio.create_subprocess_exec(
+                "youtube-dl", "-e", url, stdout=subprocess.PIPE
+            )
+
+            await asyncio.gather(data.wait(), ctx.message.add_reaction("⏳"))
+            title = str(await data.stdout.read(), encoding="utf-8").strip()
+
+            download = await asyncio.create_subprocess_exec(
+                "youtube-dl",
+                "-x",
+                "--audio-format",
+                "mp3",
+                "--max-filesize",
+                "8M",
+                "--no-continue",
+                "--postprocessor-args",
+                f"-metadata title={shlex.quote(title)}",
+                "-o",
+                filename,
+                url,
+                stdout=subprocess.PIPE,
+            )
+            await download.wait()
+
+            if b"File is larger than max-filesize" in await download.stdout.read():
+                await ctx.send(":x: file too large (max 8 MB)")
+                return
+
+            await asyncio.gather(
+                ctx.message.remove_reaction("⏳", bot.user),
+                ctx.message.add_reaction("▶️"),
+                asyncio.create_subprocess_exec(
+                    "notify-send",
+                    f"play: {ctx.author}",
+                    f"{ctx.channel} on {ctx.guild}",
+                ),
+                safe_play(filename, offset),
+            )
+
+
 @bot.group(invoke_without_command=True, case_insensitive=True)
 async def paket(ctx: commands.Context):
     "Alle Pakete anschauen"
 
-    parcels = db.execute("SELECT * FROM parcels WHERE user_id = ?", (ctx.author.id,)).fetchall()
+    parcels = db.execute(
+        "SELECT * FROM parcels WHERE user_id = ?", (ctx.author.id,)
+    ).fetchall()
     embed = discord.Embed(
         title=f"{ctx.author.display_name}'s parcels",
         description="Add parcels to track using\n"
@@ -349,7 +446,7 @@ async def add(ctx: commands.Context, service: str, number: str):
             )
         await ctx.send(f"added {number}: {data['status']}")
     else:
-        await ctx.send(f"couldn't add {number}, bad API response")
+        await ctx.send(f":x: couldn't add {number}, bad API response")
 
 
 @paket.command()
@@ -360,7 +457,7 @@ async def stop(ctx: commands.Context, number: str):
         "SELECT * FROM parcels WHERE user_id = ? AND id = ? OR number = ?",
         (ctx.author.id, number, number),
     ).fetchone():
-        await ctx.send("not found")
+        await ctx.send(":x: not found")
         return
 
     with db:
@@ -373,7 +470,7 @@ async def stop(ctx: commands.Context, number: str):
 
 @paket.command()
 async def ass(ctx: commands.Context):
-    "thanks felix"
+    "thanks fran"
     await ctx.send("horny!")
 
 
@@ -387,9 +484,13 @@ async def check_for_parcel_updates():
         if not data:
             bot.log.error(f"couldn't refresh parcel data for {parcel['id']}")
         if data and str(data) != parcel["last_status"]:
-            bot.log.info(f"notifying {bot.get_user(parcel['user_id'])} for {parcel['id']}")
+            bot.log.info(
+                f"notifying {bot.get_user(parcel['user_id'])} for {parcel['id']}"
+            )
             await bot.get_user(parcel["user_id"]).send(
-                embed=discord.Embed(title="Update!").add_field(**render_parcel(parcel, data))
+                embed=discord.Embed(title="Update!").add_field(
+                    **render_parcel(parcel, data)
+                )
             )
     bot.log.info("done checking")
 
